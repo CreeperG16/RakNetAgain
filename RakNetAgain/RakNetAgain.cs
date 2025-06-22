@@ -30,11 +30,11 @@ public class RakServer(short port) {
             case PacketID.UnconnectedPing:
                 UnconnectedPing packet = new(data);
 
-                var msg = $"MCPE;Very server;818;1.21.92;23;99;13253860892328930865;Ledrock Bevel;Creative;1;{SERVER_PORT};{SERVER_PORT + 1};"; // TODO
+                var msg = $"MCPE;Very server;818;1.21.92;23;99;3253860892328930865;Ledrock bevel;Creative;1;25565;25566;0;"; // TODO
 
                 var pong = new UnconnectedPong {
                     Time = packet.Time,
-                    ServerGuid = 0,
+                    ServerGuid = 3253860892328930865,
                     Message = msg,
                 };
 
