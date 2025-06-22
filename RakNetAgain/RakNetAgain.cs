@@ -7,11 +7,15 @@ public class RakServer(short port) {
     private readonly short SERVER_PORT = port;
     private readonly UdpClient socket = new(port);
 
+    public void Start() {
+        StartListener().Wait();
+    }
+
     private async Task StartListener() {
         while (true) {
             try {
                 UdpReceiveResult result = await socket.ReceiveAsync();
-                await HandlePacket((PacketID)result.Buffer[0], result.Buffer, result.RemoteEndPoint);
+                await HandlePacket((PacketID)result.Buffer[0], result.Buffer[1..], result.RemoteEndPoint);
             } catch (Exception ex) {
                 Console.WriteLine($"Error: {ex.Message}");
             }
@@ -19,6 +23,9 @@ public class RakServer(short port) {
     }
 
     private async Task HandlePacket(PacketID id, byte[] data, IPEndPoint client) {
+        Console.WriteLine($"Got RakNet packet: {id}");
+        // Console.WriteLine(BitConverter.ToString(data).Replace("-", " "));
+
         switch (id) {
             case PacketID.UnconnectedPing:
                 UnconnectedPing packet = new(data);
