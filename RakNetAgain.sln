@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RakNetAgain", "RakNetAgain\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RakNetRunner", "RakNetRunner\RakNetRunner.csproj", "{B9726A58-B67C-4336-8B57-35626A9EB652}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RakNetOnix", "RakNetOnix\RakNetOnix.csproj", "{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{B9726A58-B67C-4336-8B57-35626A9EB652}.Release|x64.Build.0 = Release|Any CPU
 		{B9726A58-B67C-4336-8B57-35626A9EB652}.Release|x86.ActiveCfg = Release|Any CPU
 		{B9726A58-B67C-4336-8B57-35626A9EB652}.Release|x86.Build.0 = Release|Any CPU
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Debug|Any CPU.Build.0 = Debug|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Debug|x64.ActiveCfg = Debug|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Debug|x64.Build.0 = Debug|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Debug|x86.ActiveCfg = Debug|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Debug|x86.Build.0 = Debug|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Release|Any CPU.ActiveCfg = Release|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Release|Any CPU.Build.0 = Release|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Release|x64.ActiveCfg = Release|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Release|x64.Build.0 = Release|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Release|x86.ActiveCfg = Release|x64
+		{C0CEFB09-0CF0-4A1D-9C86-7E036EA68668}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

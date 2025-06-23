@@ -1,4 +1,4 @@
-namespace RakNetAgain;
+namespace RakNetAgain.Packets;
 
 public class UnconnectedPong() {
     public static readonly PacketID Id = PacketID.UnconnectedPong;
