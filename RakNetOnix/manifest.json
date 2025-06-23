@@ -1,0 +1,11 @@
+{
+    "uuid": "6F9B40D1-AFDA-4E87-BC81-B8E02F127F22",
+    "plugin_name": "RakNetOnix",
+    "plugin_author": "Tom",
+    "plugin_description": "RakNet in an Onix plugin",
+    "plugin_version": "1.0.0",
+    "game_version": "1.21.82",
+    "supported_game_version_ranges": ["0.0.0-9.99.9"],
+    "runtime_version": 2,
+    "target_assembly": "RakNetOnix.dll"
+}
