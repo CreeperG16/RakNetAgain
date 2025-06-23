@@ -10,18 +10,18 @@ public class UnconnectedPing() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
 
-        Time = reader.ReadInt64();
+        Time = reader.ReadInt64BE();
         reader.ReadMagic();
-        ClientGuid = reader.ReadInt64();
+        ClientGuid = reader.ReadInt64BE();
     }
 
     public byte[] Write() {
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
 
-        writer.Write(Time);
+        writer.WriteBE(Time);
         writer.WriteMagic();
-        writer.Write(ClientGuid);
+        writer.WriteBE(ClientGuid);
 
         return stream.ToArray();
     }

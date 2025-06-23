@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace RakNetAgain;
 
 public class UnconnectedPong() {
@@ -7,39 +5,29 @@ public class UnconnectedPong() {
 
     public long Time { get; init; }
     public ulong ServerGuid { get; init; }
-    public string Message { get; init; } = "";
+    public ServerMessage? Message { get; init; }
 
     public UnconnectedPong(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
 
-        Time = reader.ReadInt64();
-        // ServerGuid = reader.ReadUInt64();
-        ServerGuid = BitConverter.ToUInt64([.. reader.ReadBytes(8).Reverse()]);
+        Time = reader.ReadInt64BE();
+        ServerGuid = reader.ReadUInt64BE();
         reader.ReadMagic();
-        var len = reader.ReadUInt16();
-        Message = Encoding.UTF8.GetString(reader.ReadBytes(len));
+        Message = ServerMessage.FromString(reader.ReadString16());
     }
 
     public byte[] Write() {
+        if (Message == null) throw new MissingFieldException("UnconnectedPong: Message field not provided!");
+
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
 
         writer.Write((byte)Id);
-
-        writer.Write(Time);
-
-        writer.Write(BitConverter.IsLittleEndian
-            ? [.. BitConverter.GetBytes(ServerGuid).Reverse()]
-            : BitConverter.GetBytes(ServerGuid));
-
+        writer.WriteBE(Time);
+        writer.WriteBE(ServerGuid);
         writer.WriteMagic();
-        // writer.Write((ushort)Encoding.UTF8.GetByteCount(Message));
-        var len = (ushort)Encoding.UTF8.GetByteCount(Message);
-        writer.Write((byte)(len >> 8));
-        writer.Write((byte)(len & 0xff));
-
-        writer.Write(Encoding.UTF8.GetBytes(Message));
+        writer.WriteString16(Message.ToString());
 
         return stream.ToArray();
     }

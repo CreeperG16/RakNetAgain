@@ -1,12 +1,23 @@
-﻿using System.Net;
+﻿// #error version
+
+using System.Net;
 using System.Net.Sockets;
 
 namespace RakNetAgain;
 
-public class RakServer(short port) {
-    private readonly short SERVER_PORT = port;
+public class RakServer(ushort port) {
+    private readonly ushort SERVER_PORT = port;
     private readonly UdpClient socket = new(port);
+    
+    public ulong Guid { get; } = (ulong)new Random().NextInt64();
 
+    public int MaxPlayers { get; set; } = 10;
+    public int ProtocolVersion { get; set; } = 818;
+    public string GameVersion { get; set; } = "1.21.90";
+
+    public static readonly int RakNetProtocol = 11;
+
+    // TODO: proper start func, threads?
     public void Start() {
         StartListener().Wait();
     }
@@ -30,12 +41,19 @@ public class RakServer(short port) {
             case PacketID.UnconnectedPing:
                 UnconnectedPing packet = new(data);
 
-                var msg = $"MCPE;Very server;818;1.21.92;23;99;3253860892328930865;Ledrock bevel;Creative;1;25565;25566;0;"; // TODO
-
                 var pong = new UnconnectedPong {
                     Time = packet.Time,
-                    ServerGuid = 3253860892328930865,
-                    Message = msg,
+                    ServerGuid = Guid,
+                    Message = new ServerMessage {
+                        GameVersion = GameVersion,
+                        ProtocolVersion = ProtocolVersion,
+                        Port = SERVER_PORT,
+                        PortV6 = (ushort)(SERVER_PORT + 1), // TODO: ?
+                        ServerGuid = Guid,
+
+                        PlayerCount = 0, // TODO: current connections
+                        MaxPlayers = MaxPlayers,
+                    },
                 };
 
                 await SendPacket(pong.Write(), client);
