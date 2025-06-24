@@ -14,6 +14,9 @@ public class OpenConnectionReply2() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
 
+        var id = reader.ReadByte();
+        if (id != (byte)Id) throw new InvalidDataException($"Unexpected packet ID '0x{id:X2}' when attempting to read {ToString()}.");
+
         reader.ReadMagic();
         ServerGuid = reader.ReadUInt64BE();
         ClientAddress = reader.ReadAddress();

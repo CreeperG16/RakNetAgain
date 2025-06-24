@@ -10,6 +10,9 @@ public class OpenConnectionRequest1() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
 
+        var id = reader.ReadByte();
+        if (id != (byte)Id) throw new InvalidDataException($"Unexpected packet ID '0x{id:X2}' when attempting to read {ToString()}.");
+
         reader.ReadMagic();
         ProtocolVersion = reader.ReadByte();
         MaxTransferUnit = (ushort)(stream.Length - stream.Position);

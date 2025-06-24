@@ -18,6 +18,8 @@ public class RakServer(ushort port) {
     public int ProtocolVersion { get; set; } = 818;
     public string GameVersion { get; set; } = "1.21.90";
 
+    public Dictionary<IPEndPoint, RakConnection> Connections = [];
+
     public static readonly byte RAKNET_VERSION = 11;
 
     // TODO: proper start func, threads?
@@ -43,17 +45,30 @@ public class RakServer(ushort port) {
     public async Task GetPackets() {
         try {
             UdpReceiveResult result = await socket.ReceiveAsync();
-            await HandlePacket((PacketID)result.Buffer[0], result.Buffer[1..], result.RemoteEndPoint);
+            await HandlePacket(result.Buffer, result.RemoteEndPoint);
         } catch (Exception ex) {
             Console.WriteLine($"Error: {ex.Message}");
         }
     }
 
-    private async Task HandlePacket(PacketID id, byte[] data, IPEndPoint client) {
-        Console.WriteLine($"Got RakNet packet: {id}");
-        // Console.WriteLine(BitConverter.ToString(data).Replace("-", " "));
+    private async Task HandlePacket(byte[] data, IPEndPoint client) {
+        byte id = data[0];
 
-        switch (id) {
+        if ((id & 128) != 0) {
+            var connection = Connections[client];
+            if (connection == null) {
+                Console.WriteLine($"Received valid connection packet '0x{id:X2}' ({data.Length}) from client, but no connection class found.");
+                return;
+            }
+
+            await connection.HandleIncomingFrameSet(data);
+            return;
+        }
+
+        Console.WriteLine($"Received unconnected packet '0x{id:X2}' [{(PacketID)id}] ({data.Length}) from client.");
+        // Console.WriteLine($"Packet: {BitConverter.ToString(data).Replace("-", " ")}");
+
+        switch ((PacketID)id) {
             case PacketID.UnconnectedPing:
                 await HandleUnconnectedPing(data, client);
                 break;
@@ -122,7 +137,12 @@ public class RakServer(ushort port) {
             EncryptionEnabled = false,
         };
 
-        // TODO: make connection class here
+        RakConnection connection = new() {
+            Endpoint = client,
+            MaxTransferUnit = (ushort)packet.MaxTransferUnit,
+        };
+
+        Connections.Add(client, connection);
 
         await SendPacket(reply.Write(), client);
     }
