@@ -16,5 +16,6 @@ public enum PacketID : byte {
     UnconnectedPong = 0x1c,
     FrameSet = 0x80,
     Nack = 0xa0,
-    Ack = 0xc0
+    Ack = 0xc0,
+    GamePacket = 0xfe,
 }

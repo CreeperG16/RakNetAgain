@@ -89,6 +89,7 @@ public class RakConnection {
 
         Console.WriteLine($"Received framed packet '0x{header:X2}' ({data.Length}) from client.");
 
+        // TODO: this if statement is probably redundant
         if (Status == ConnectionStatus.Connecting) {
             switch ((PacketID)header) {
                 case PacketID.Disconnect:
@@ -104,7 +105,24 @@ public class RakConnection {
                     Console.WriteLine($"Client connected: {Endpoint}");
                     break;
             }
+        } else {
+            switch ((PacketID)header) {
+                case PacketID.Disconnect:
+                    Status = ConnectionStatus.Disconnecting;
+                    // TODO: callback / event
+                    Status = ConnectionStatus.Disconnected;
+                    break;
+                case PacketID.ConnectedPing:
+                    // TODO: send pong
+                    break;
+                case PacketID.GamePacket:
+                    // TODO: callback / event (user-facing)
+                    break;
+            }
         }
+
+        // Flush immediate packets (?)
+        await FlushFrameQueue(Frame.FramePriority.Immediate);
     }
 
     private async Task HandleFrame(Frame frame) {
@@ -271,7 +289,7 @@ public class RakConnection {
         if (queue.Count == 0) return;
         while (queue.Count > 0) {
             FrameSet frameSet = FrameSetFromQueue(priority);
-            // TODO: Send FrameSet
+            await SendFrameSet(frameSet);
         }
     }
 
@@ -292,5 +310,10 @@ public class RakConnection {
         };
 
         QueueFrame(frame, Frame.FramePriority.Normal);
+    }
+
+    private async Task SendFrameSet(FrameSet frameSet) {
+        // TODO: get the socket into this class somehow?
+        await Task.Delay(0);
     }
 }
