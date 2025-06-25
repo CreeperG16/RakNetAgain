@@ -86,7 +86,7 @@ public class RakServer(ushort port) {
                 return;
             }
 
-            await connection.HandleIncomingFrameSet(data);
+            await connection.HandleIncomingPacket(data);
             return;
         }
 

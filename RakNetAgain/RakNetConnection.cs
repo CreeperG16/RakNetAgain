@@ -58,11 +58,13 @@ public class RakConnection {
         if (receivedFrameSequences.Count > 0) {
             Ack ack = new() { Sequences = [.. receivedFrameSequences] };
             await Send(ack.Write());
+            receivedFrameSequences.Clear();
         }
 
         if (lostFrameSequences.Count > 0) {
             Nack nack = new() { Sequences = [.. lostFrameSequences] };
             await Send(nack.Write());
+            lostFrameSequences.Clear();
         }
 
         // TODO: differentiate these somehow?
@@ -71,7 +73,7 @@ public class RakConnection {
         await FlushFrameQueue(Frame.FramePriority.Normal);
     }
 
-    internal async Task HandleIncomingFrameSet(byte[] data) {
+    internal async Task HandleIncomingPacket(byte[] data) {
         var id = data[0] & 0xf0;
         Console.WriteLine($"Received connected packet '0x{id:X2}' [{(PacketID)id}] ({data.Length}) from client.");
 
@@ -127,9 +129,8 @@ public class RakConnection {
 
     // Handle packets that arrived in Frames
     private async Task HandlePacket(byte[] data) {
-        byte header = data[0];
-
-        Console.WriteLine($"Received framed packet '0x{header:X2}' ({data.Length}) from client.");
+        Console.WriteLine($"Received framed packet '0x{data[0]:X2}' [{(PacketID)data[0]}] ({data.Length}) from client [{Status}].");
+        // Console.WriteLine($"{BitConverter.ToString(data).Replace("-", " ")}");
 
         if (Status == ConnectionStatus.Connecting) {
             HandleOfflinePacket(data);
@@ -170,6 +171,7 @@ public class RakConnection {
                 HandleConnectedPing(data);
                 break;
             case PacketID.GamePacket:
+                Console.WriteLine($"GOT GAME PACKET WOOOO");
                 OnGamePacket?.Invoke(data[1..]); // Trim off the 0xfe game packet id
                 break;
         }
