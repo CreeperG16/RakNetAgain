@@ -23,14 +23,24 @@ public class RakServer(ushort port) {
     public static readonly byte RAKNET_VERSION = 11;
 
     // TODO: proper start func, threads?
-    public void Start() {
-        StartListener().Wait();
-    }
-
     private CancellationTokenSource? _cts;
-    public async Task StartListener(CancellationToken? cancellationToken = null) {
+    public void Start(CancellationToken? cancellationToken = null) {
         _cts = new CancellationTokenSource();
         var token = cancellationToken ?? _cts.Token;
+
+        _ = StartListener(token);
+        _ = StartConnectionTicking(token);
+    }
+
+    public void Stop() {
+        _cts?.Cancel();
+        socket.Close();
+    }
+
+    private CancellationTokenSource? _listenerCts;
+    public async Task StartListener(CancellationToken? cancellationToken = null) {
+        _listenerCts = new CancellationTokenSource();
+        var token = cancellationToken ?? _listenerCts.Token;
 
         while (!token.IsCancellationRequested) {
             await GetPackets();
@@ -38,8 +48,23 @@ public class RakServer(ushort port) {
         }
     }
 
+    private CancellationTokenSource? _connectionTickerCts;
+    public async Task StartConnectionTicking(CancellationToken? cancellationToken = null) {
+        _connectionTickerCts = new CancellationTokenSource();
+        var token = cancellationToken ?? _connectionTickerCts.Token;
+
+        while (!token.IsCancellationRequested) {
+            foreach (var conn in Connections) await conn.Value.Tick();
+            Thread.Sleep(100);
+        }
+    }
+
     public void StopListener() {
-        _cts?.Cancel();
+        _listenerCts?.Cancel();
+    }
+
+    public void StopConnectionTicking() {
+        _connectionTickerCts?.Cancel();
     }
 
     public async Task GetPackets() {
@@ -137,7 +162,7 @@ public class RakServer(ushort port) {
             EncryptionEnabled = false,
         };
 
-        RakConnection connection = new() {
+        RakConnection connection = new(server: this) {
             Endpoint = client,
             MaxTransferUnit = (ushort)packet.MaxTransferUnit,
         };
@@ -147,11 +172,5 @@ public class RakServer(ushort port) {
         await SendPacket(reply.Write(), client);
     }
 
-    private async Task SendPacket(byte[] data, IPEndPoint client) {
-        await socket.SendAsync(data, data.Length, client);
-    }
-
-    public void Close() {
-        socket.Close();
-    }
+    internal Task SendPacket(byte[] data, IPEndPoint client) => socket.SendAsync(data, data.Length, client);
 }

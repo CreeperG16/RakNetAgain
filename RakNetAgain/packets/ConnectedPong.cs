@@ -1,21 +1,20 @@
 namespace RakNetAgain.Packets;
 
-public class UnconnectedPing() {
-    public static readonly PacketID Id = PacketID.UnconnectedPing;
+public class ConnectedPong() {
+    public static readonly PacketID Id = PacketID.ConnectedPong;
 
-    public long Time { get; init; }
-    public long ClientGuid { get; init; }
+    public long PingTime { get; init; }
+    public long PongTime { get; init; }
 
-    public UnconnectedPing(byte[] data) : this() {
+    public ConnectedPong(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
 
         var id = reader.ReadByte();
         if (id != (byte)Id) throw new InvalidDataException($"Unexpected packet ID '0x{id:X2}' when attempting to read {ToString()}.");
 
-        Time = reader.ReadInt64BE();
-        reader.ReadMagic();
-        ClientGuid = reader.ReadInt64BE();
+        PingTime = reader.ReadInt64BE();
+        PongTime = reader.ReadInt64BE();
     }
 
     public byte[] Write() {
@@ -23,9 +22,8 @@ public class UnconnectedPing() {
         using BinaryWriter writer = new(stream);
 
         writer.Write((byte)Id);
-        writer.WriteBE(Time);
-        writer.WriteMagic();
-        writer.WriteBE(ClientGuid);
+        writer.WriteBE(PingTime);
+        writer.WriteBE(PongTime);
 
         return stream.ToArray();
     }

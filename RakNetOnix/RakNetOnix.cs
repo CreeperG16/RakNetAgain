@@ -78,7 +78,7 @@ public class RakNetOnix : OnixPluginBase {
     }
 
     protected override void OnDisabled() {
-        server?.Close();
+        // server?.Close();
         server = null;
     }
 

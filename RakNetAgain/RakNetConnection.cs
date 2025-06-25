@@ -18,18 +18,58 @@ public class RakConnection {
     private uint reliableIndex = 0;
     private short fragmentIndex = 0;
     private uint outputSequence = 0;
+    private int lastSequence = -1;
 
     private readonly Dictionary<byte, Dictionary<uint, Frame>> orderingQueue = [];
     private readonly Dictionary<short, Dictionary<int, Frame>> frameFragments = [];
 
+    // To be able to retransmit them on Nack
+    private readonly Dictionary<uint, Frame[]> outputBackup = [];
+
+    // TODO: ConcurrentQueue? thread safety in general!
     private readonly Dictionary<Frame.FramePriority, Queue<Frame>> outgoingQueues = new() {
         [Frame.FramePriority.Immediate] = new(),
         [Frame.FramePriority.Normal] = new(),
     };
 
-    private int lastSequence = -1;
+    public delegate void OnConnectListener();
+    public event OnConnectListener OnConnect = delegate { };
 
-    internal RakConnection() { }
+    public delegate void OnDisconnectListener();
+    public event OnDisconnectListener OnDisconnect = delegate { };
+
+    public delegate void OnGamePacketListener(byte[] data);
+    public event OnGamePacketListener OnGamePacket = delegate { };
+
+    private readonly RakServer _server;
+    internal RakConnection(RakServer server) {
+        _server = server;
+    }
+
+    internal Task Send(byte[] data) => _server.SendPacket(data, Endpoint);
+    private async Task SendFrameSet(FrameSet frameSet) {
+        outputBackup[frameSet.Sequence] = frameSet.Frames;
+        await Send(frameSet.Write());
+    }
+
+    internal async Task Tick() {
+        if (Status == ConnectionStatus.Disconnecting || Status == ConnectionStatus.Disconnected) return;
+
+        if (receivedFrameSequences.Count > 0) {
+            Ack ack = new() { Sequences = [.. receivedFrameSequences] };
+            await Send(ack.Write());
+        }
+
+        if (lostFrameSequences.Count > 0) {
+            Nack nack = new() { Sequences = [.. lostFrameSequences] };
+            await Send(nack.Write());
+        }
+
+        // TODO: differentiate these somehow?
+        // Not sure yet how to properly implement immediate
+        await FlushFrameQueue(Frame.FramePriority.Immediate);
+        await FlushFrameQueue(Frame.FramePriority.Normal);
+    }
 
     internal async Task HandleIncomingFrameSet(byte[] data) {
         var id = data[0] & 0xf0;
@@ -37,8 +77,10 @@ public class RakConnection {
 
         switch ((PacketID)id) {
             case PacketID.Ack:
+                HandleIncomingAck(data);
                 break;
             case PacketID.Nack:
+                HandleIncomingNack(data);
                 break;
             case PacketID.FrameSet:
                 await HandleFrameSet(data);
@@ -89,40 +131,48 @@ public class RakConnection {
 
         Console.WriteLine($"Received framed packet '0x{header:X2}' ({data.Length}) from client.");
 
-        // TODO: this if statement is probably redundant
         if (Status == ConnectionStatus.Connecting) {
-            switch ((PacketID)header) {
-                case PacketID.Disconnect:
-                    Status = ConnectionStatus.Disconnecting;
-                    // TODO: call callbacks / event
-                    Status = ConnectionStatus.Disconnected;
-                    break;
-                case PacketID.ConnectionRequest:
-                    HandleConnectionRequest(data);
-                    break;
-                case PacketID.NewIncomingConnection:
-                    Status = ConnectionStatus.Connected;
-                    Console.WriteLine($"Client connected: {Endpoint}");
-                    break;
-            }
+            HandleOfflinePacket(data);
         } else {
-            switch ((PacketID)header) {
-                case PacketID.Disconnect:
-                    Status = ConnectionStatus.Disconnecting;
-                    // TODO: callback / event
-                    Status = ConnectionStatus.Disconnected;
-                    break;
-                case PacketID.ConnectedPing:
-                    // TODO: send pong
-                    break;
-                case PacketID.GamePacket:
-                    // TODO: callback / event (user-facing)
-                    break;
-            }
+            HandleOnlinePacket(data);
         }
 
         // Flush immediate packets (?)
         await FlushFrameQueue(Frame.FramePriority.Immediate);
+    }
+
+    private void HandleOfflinePacket(byte[] data) {
+        switch ((PacketID)data[0]) {
+            case PacketID.Disconnect:
+                Status = ConnectionStatus.Disconnecting;
+                OnDisconnect?.Invoke();
+                Status = ConnectionStatus.Disconnected;
+                break;
+            case PacketID.ConnectionRequest:
+                HandleConnectionRequest(data);
+                break;
+            case PacketID.NewIncomingConnection:
+                Status = ConnectionStatus.Connected;
+                Console.WriteLine($"Client connected: {Endpoint}");
+                OnConnect?.Invoke();
+                break;
+        }
+    }
+
+    private void HandleOnlinePacket(byte[] data) {
+        switch ((PacketID)data[0]) {
+            case PacketID.Disconnect:
+                Status = ConnectionStatus.Disconnecting;
+                OnDisconnect?.Invoke();
+                Status = ConnectionStatus.Disconnected;
+                break;
+            case PacketID.ConnectedPing:
+                HandleConnectedPing(data);
+                break;
+            case PacketID.GamePacket:
+                OnGamePacket?.Invoke(data[1..]); // Trim off the 0xfe game packet id
+                break;
+        }
     }
 
     private async Task HandleFrame(Frame frame) {
@@ -251,7 +301,7 @@ public class RakConnection {
         for (int index = 0; index < fragmentCount; index++) {
             var slice = original.Payload[(index * maxSize)..Math.Min((index + 1) * maxSize, original.Payload.Length)];
             Frame fragment = new() {
-                Reliability = original.Reliability, // TODO: set this to ordered / sequenced regardless of original frame's reliability?
+                Reliability = Frame.FrameReliability.ReliableOrdered, // Set this to ordered / sequenced regardless of original frame's reliability to ensure the packet is reassembled
                 ReliableIndex = reliableIndex++,
                 SequenceIndex = original.SequenceIndex,
                 OrderIndex = original.OrderIndex,
@@ -273,7 +323,7 @@ public class RakConnection {
         var queue = outgoingQueues[priority];
         int sumLength = 0;
         List<Frame> frames = [];
-        while (true) {
+        while (queue.Count > 0) {
             sumLength += queue.Peek().ByteSize;
             if (sumLength + 4 > MaxTransferUnit) break; // +4 for the packet ID (1) and the sequence (3)
             frames.Add(queue.Dequeue());
@@ -286,6 +336,7 @@ public class RakConnection {
 
     private async Task FlushFrameQueue(Frame.FramePriority priority) {
         var queue = outgoingQueues[priority];
+        // lock (queue) { } // TODO: thread safety?
         if (queue.Count == 0) return;
         while (queue.Count > 0) {
             FrameSet frameSet = FrameSetFromQueue(priority);
@@ -298,9 +349,9 @@ public class RakConnection {
 
         ConnectionRequestAccepted reply = new() {
             ClientAddress = Endpoint,
-            SystemIndex = 0, // TODO: increment?
+            SystemIndex = (short)_server.Connections.Count, // TODO: Properly?
             RequestTime = packet.Time,
-            Time = 0, // TODO: now.
+            Time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
         };
 
         Frame frame = new() {
@@ -312,8 +363,47 @@ public class RakConnection {
         QueueFrame(frame, Frame.FramePriority.Normal);
     }
 
-    private async Task SendFrameSet(FrameSet frameSet) {
-        // TODO: get the socket into this class somehow?
-        await Task.Delay(0);
+    private void HandleConnectedPing(byte[] data) {
+        ConnectedPing ping = new(data);
+        ConnectedPong pong = new() {
+            PingTime = ping.Time,
+            PongTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        };
+
+        Frame frame = new() {
+            Reliability = Frame.FrameReliability.Unreliable,
+            OrderChannel = 0,
+            Payload = pong.Write(),
+        };
+
+        QueueFrame(frame, Frame.FramePriority.Normal);
+    }
+
+    private void HandleIncomingAck(byte[] data) {
+        Ack ack = new(data);
+        foreach (uint sequence in ack.Sequences) {
+            outputBackup.Remove(sequence);
+        }
+    }
+
+    private void HandleIncomingNack(byte[] data) {
+        Nack nack = new(data);
+
+        foreach (uint sequence in nack.Sequences) {
+            // TODO: maybe log if a packet was lost (not found in the backup queue)?
+            if (!outputBackup.TryGetValue(sequence, out var frames)) continue;
+            foreach (Frame frame in frames) QueueFrame(frame, Frame.FramePriority.Immediate);
+        }
+    }
+
+    public void Disconnect() {
+        Disconnect packet = new();
+        Frame frame = new() {
+            Reliability = Frame.FrameReliability.Unreliable,
+            OrderChannel = 0,
+            Payload = packet.Write(),
+        };
+
+        QueueFrame(frame, Frame.FramePriority.Immediate);
     }
 }
