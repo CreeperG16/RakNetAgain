@@ -31,7 +31,7 @@ public class RakNetOnix : OnixPluginBase {
         server = new RakServer(25565) {
             GameVersion = "1.21.82",
             ProtocolVersion = 800,
-            MaxPlayers = 20,
+            MaxConnections = 20,
         };
 
         // listenerTask = server!.StartListener();

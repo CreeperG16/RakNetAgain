@@ -6,7 +6,7 @@ namespace RakNetAgain;
 public class RakConnection {
     public required IPEndPoint Endpoint { get; init; }
     public required ushort MaxTransferUnit { get; init; }
-    public ConnectionStatus Status { get; private set; }
+    public ConnectionStatus Status { get; private set; } = ConnectionStatus.Connecting;
 
     public enum ConnectionStatus { Connecting, Connected, Disconnecting, Disconnected }
 
@@ -73,9 +73,11 @@ public class RakConnection {
         await FlushFrameQueue(Frame.FramePriority.Normal);
     }
 
+    // --- Receiving packets ---
+
     internal async Task HandleIncomingPacket(byte[] data) {
         var id = data[0] & 0xf0;
-        Console.WriteLine($"Received connected packet '0x{id:X2}' [{(PacketID)id}] ({data.Length}) from client.");
+        // Console.WriteLine($"Received connected packet '0x{id:X2}' [{(PacketID)id}] ({data.Length}) from client.");
 
         switch ((PacketID)id) {
             case PacketID.Ack:
@@ -89,6 +91,23 @@ public class RakConnection {
                 break;
             default:
                 break;
+        }
+    }
+
+    private void HandleIncomingAck(byte[] data) {
+        Ack ack = new(data);
+        foreach (uint sequence in ack.Sequences) {
+            outputBackup.Remove(sequence);
+        }
+    }
+
+    private void HandleIncomingNack(byte[] data) {
+        Nack nack = new(data);
+
+        foreach (uint sequence in nack.Sequences) {
+            // TODO: maybe log if a packet was lost (not found in the backup queue)?
+            if (!outputBackup.TryGetValue(sequence, out var frames)) continue;
+            foreach (Frame frame in frames) QueueFrame(frame, Frame.FramePriority.Immediate);
         }
     }
 
@@ -127,56 +146,6 @@ public class RakConnection {
         }
     }
 
-    // Handle packets that arrived in Frames
-    private async Task HandlePacket(byte[] data) {
-        Console.WriteLine($"Received framed packet '0x{data[0]:X2}' [{(PacketID)data[0]}] ({data.Length}) from client [{Status}].");
-        // Console.WriteLine($"{BitConverter.ToString(data).Replace("-", " ")}");
-
-        if (Status == ConnectionStatus.Connecting) {
-            HandleOfflinePacket(data);
-        } else {
-            HandleOnlinePacket(data);
-        }
-
-        // Flush immediate packets (?)
-        await FlushFrameQueue(Frame.FramePriority.Immediate);
-    }
-
-    private void HandleOfflinePacket(byte[] data) {
-        switch ((PacketID)data[0]) {
-            case PacketID.Disconnect:
-                Status = ConnectionStatus.Disconnecting;
-                OnDisconnect?.Invoke();
-                Status = ConnectionStatus.Disconnected;
-                break;
-            case PacketID.ConnectionRequest:
-                HandleConnectionRequest(data);
-                break;
-            case PacketID.NewIncomingConnection:
-                Status = ConnectionStatus.Connected;
-                Console.WriteLine($"Client connected: {Endpoint}");
-                OnConnect?.Invoke();
-                break;
-        }
-    }
-
-    private void HandleOnlinePacket(byte[] data) {
-        switch ((PacketID)data[0]) {
-            case PacketID.Disconnect:
-                Status = ConnectionStatus.Disconnecting;
-                OnDisconnect?.Invoke();
-                Status = ConnectionStatus.Disconnected;
-                break;
-            case PacketID.ConnectedPing:
-                HandleConnectedPing(data);
-                break;
-            case PacketID.GamePacket:
-                Console.WriteLine($"GOT GAME PACKET WOOOO");
-                OnGamePacket?.Invoke(data[1..]); // Trim off the 0xfe game packet id
-                break;
-        }
-    }
-
     private async Task HandleFrame(Frame frame) {
         if (frame.IsFragmented) {
             await HandleFrameFragment(frame);
@@ -195,7 +164,7 @@ public class RakConnection {
             }
 
             highestSequenceIndices[frame.OrderChannel] = frame.SequenceIndex;
-            await HandlePacket(frame.Payload);
+            await HandleFramedPacket(frame.Payload);
             return;
         }
 
@@ -216,14 +185,14 @@ public class RakConnection {
             if (frame.OrderIndex == expectedIndex) {
                 orderIndices[frame.OrderChannel] = frame.OrderIndex + 1;
 
-                await HandlePacket(frame.Payload);
+                await HandleFramedPacket(frame.Payload);
 
                 orderingQueue.TryGetValue(frame.OrderChannel, out var outOfOrderQueue);
                 outOfOrderQueue ??= [];
 
                 var index = orderIndices[frame.OrderChannel];
                 while (outOfOrderQueue.ContainsKey(index)) {
-                    await HandlePacket(outOfOrderQueue[index].Payload);
+                    await HandleFramedPacket(outOfOrderQueue[index].Payload);
                     outOfOrderQueue.Remove(index++);
                 }
 
@@ -236,17 +205,16 @@ public class RakConnection {
             return;
         }
 
-        await HandlePacket(frame.Payload);
+        await HandleFramedPacket(frame.Payload);
     }
 
     private async Task HandleFrameFragment(Frame frame) {
-        if (!frameFragments.ContainsKey(frame.FragmentId)) {
+        if (!frameFragments.TryGetValue(frame.FragmentId, out var fragments)) {
             // Add the ID to the dict
             frameFragments[frame.FragmentId] = new() { { frame.FragmentIndex, frame } };
-            return;
+            return; // Return since if a packet fits in one fragment, it wouldn't have been fragmented (...hopefully)
         }
 
-        var fragments = frameFragments[frame.FragmentId];
         fragments[frame.FragmentIndex] = frame;
 
         // Check if we have all of the fragments to reconstruct the packet
@@ -272,6 +240,92 @@ public class RakConnection {
         await HandleFrame(fullFrame);
     }
 
+    private async Task HandleFramedPacket(byte[] data) {
+        // Console.WriteLine($"Received framed packet '0x{data[0]:X2}' [{(PacketID)data[0]}] ({data.Length}) from client [{Status}].");
+        // Console.WriteLine($"{BitConverter.ToString(data).Replace("-", " ")}");
+
+        if (Status == ConnectionStatus.Connecting) {
+            HandleUnconnectedPacket(data);
+        } else {
+            HandleConnectedPacket(data);
+        }
+
+        // Flush immediate packets (?)
+        await FlushFrameQueue(Frame.FramePriority.Immediate);
+    }
+
+    private void HandleUnconnectedPacket(byte[] data) {
+        switch ((PacketID)data[0]) {
+            case PacketID.Disconnect:
+                Status = ConnectionStatus.Disconnecting;
+                OnDisconnect?.Invoke();
+                Status = ConnectionStatus.Disconnected;
+                break;
+            case PacketID.ConnectionRequest:
+                HandleConnectionRequest(data);
+                break;
+            case PacketID.NewIncomingConnection:
+                Status = ConnectionStatus.Connected;
+                // Console.WriteLine($"Client connected: {Endpoint}");
+                OnConnect?.Invoke();
+                break;
+        }
+    }
+
+    private void HandleConnectedPacket(byte[] data) {
+        switch ((PacketID)data[0]) {
+            case PacketID.Disconnect:
+                Status = ConnectionStatus.Disconnecting;
+                OnDisconnect?.Invoke();
+                Status = ConnectionStatus.Disconnected;
+                break;
+            case PacketID.ConnectedPing:
+                HandleConnectedPing(data);
+                break;
+            case PacketID.GamePacket:
+                // Console.WriteLine($"GOT GAME PACKET WOOOO");
+                OnGamePacket?.Invoke(data[1..]); // Trim off the 0xfe game packet id
+                break;
+        }
+    }
+
+    private void HandleConnectionRequest(byte[] data) {
+        ConnectionRequest packet = new(data);
+
+        ConnectionRequestAccepted reply = new() {
+            ClientAddress = Endpoint,
+            SystemIndex = (short)_server.Connections.Count, // TODO: Properly?
+            RequestTime = packet.Time,
+            Time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        };
+
+        Frame frame = new() {
+            Reliability = Frame.FrameReliability.Unreliable,
+            OrderChannel = 0,
+            Payload = reply.Write(),
+        };
+
+        QueueFrame(frame, Frame.FramePriority.Normal);
+    }
+
+    private void HandleConnectedPing(byte[] data) {
+        ConnectedPing ping = new(data);
+        ConnectedPong pong = new() {
+            PingTime = ping.Time,
+            PongTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        };
+
+        Frame frame = new() {
+            Reliability = Frame.FrameReliability.Unreliable,
+            OrderChannel = 0,
+            Payload = pong.Write(),
+        };
+
+        QueueFrame(frame, Frame.FramePriority.Normal);
+    }
+
+    // --- Sending packets ---
+
     private void QueueFrame(Frame frame, Frame.FramePriority priority) {
         if (!orderIndices.TryGetValue(frame.OrderChannel, out var currentOrder)) currentOrder = 0;
         if (!sequenceIndices.TryGetValue(frame.OrderChannel, out var currentSequence)) currentSequence = 0;
@@ -294,6 +348,10 @@ public class RakConnection {
             frame.ReliableIndex = reliableIndex++;
             outgoingQueues[priority].Enqueue(frame);
         }
+
+        // TODO: ?
+        if (priority != Frame.FramePriority.Immediate) return;
+        _ = FlushFrameQueue(Frame.FramePriority.Immediate);
     }
 
     private void QueueFrameFragments(Frame original, Frame.FramePriority priority, int maxSize) {
@@ -346,58 +404,6 @@ public class RakConnection {
         }
     }
 
-    private void HandleConnectionRequest(byte[] data) {
-        ConnectionRequest packet = new(data);
-
-        ConnectionRequestAccepted reply = new() {
-            ClientAddress = Endpoint,
-            SystemIndex = (short)_server.Connections.Count, // TODO: Properly?
-            RequestTime = packet.Time,
-            Time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-        };
-
-        Frame frame = new() {
-            Reliability = Frame.FrameReliability.Unreliable,
-            OrderChannel = 0,
-            Payload = reply.Write(),
-        };
-
-        QueueFrame(frame, Frame.FramePriority.Normal);
-    }
-
-    private void HandleConnectedPing(byte[] data) {
-        ConnectedPing ping = new(data);
-        ConnectedPong pong = new() {
-            PingTime = ping.Time,
-            PongTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-        };
-
-        Frame frame = new() {
-            Reliability = Frame.FrameReliability.Unreliable,
-            OrderChannel = 0,
-            Payload = pong.Write(),
-        };
-
-        QueueFrame(frame, Frame.FramePriority.Normal);
-    }
-
-    private void HandleIncomingAck(byte[] data) {
-        Ack ack = new(data);
-        foreach (uint sequence in ack.Sequences) {
-            outputBackup.Remove(sequence);
-        }
-    }
-
-    private void HandleIncomingNack(byte[] data) {
-        Nack nack = new(data);
-
-        foreach (uint sequence in nack.Sequences) {
-            // TODO: maybe log if a packet was lost (not found in the backup queue)?
-            if (!outputBackup.TryGetValue(sequence, out var frames)) continue;
-            foreach (Frame frame in frames) QueueFrame(frame, Frame.FramePriority.Immediate);
-        }
-    }
-
     public void Disconnect() {
         Disconnect packet = new();
         Frame frame = new() {
@@ -407,5 +413,15 @@ public class RakConnection {
         };
 
         QueueFrame(frame, Frame.FramePriority.Immediate);
+    }
+
+    public void SendGamePacket(byte[] data, Frame.FramePriority priority) {
+        Frame frame = new() {
+            Reliability = Frame.FrameReliability.Reliable,
+            OrderChannel = 0,
+            Payload = [0xfe, .. data],
+        };
+
+        QueueFrame(frame, priority);
     }
 }
