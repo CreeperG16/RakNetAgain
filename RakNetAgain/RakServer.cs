@@ -182,6 +182,10 @@ public class RakServer(ushort port, ushort? portV6 = null) {
             MaxTransferUnit = (ushort)packet.MaxTransferUnit,
         };
 
+        connection.OnDisconnect += () => {
+            Connections.Remove(endpoint);
+        };
+
         Connections.Add(endpoint, connection);
         OnConnect?.Invoke(connection);
 

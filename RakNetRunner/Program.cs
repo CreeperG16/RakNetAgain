@@ -10,6 +10,17 @@ public class Program {
             GameVersion = "1.21.92",
         };
 
+        server.OnConnect += (connection) => {
+            Console.WriteLine($"New connection wooo");
+            connection.OnConnect += () => {
+                Console.WriteLine($"{connection.Endpoint} Connected yay");
+            };
+            connection.OnGamePacket += (packet) => {
+                Console.WriteLine($"Got a game packet wooo");
+                Console.WriteLine($"{BitConverter.ToString(packet).Replace("-", " ")}");
+            };
+        };
+
         Console.WriteLine($"Starting server (guid: {server.Guid})...");
         server.Start();
     }
