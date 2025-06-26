@@ -1,11 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class FrameSet() {
     public static readonly PacketID Id = PacketID.FrameSet;
 
-    public uint /* lu24 */ Sequence { get; init; }
-    public Frame[] Frames { get; init; } = [];
+    public required uint /* lu24 */ Sequence { get; init; }
+    public required Frame[] Frames { get; init; } = [];
 
+    [SetsRequiredMembers]
     public FrameSet(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);

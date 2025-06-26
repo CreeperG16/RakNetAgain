@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 
 namespace RakNetAgain.Packets;
@@ -5,11 +6,12 @@ namespace RakNetAgain.Packets;
 public class OpenConnectionReply2() {
     public static readonly PacketID Id = PacketID.OpenConnectionReply2;
 
-    public ulong ServerGuid { get; init; }
-    public IPEndPoint? ClientAddress { get; init; }
-    public short MaxTransferUnit { get; init; }
-    public bool EncryptionEnabled { get; init; }
+    public required ulong ServerGuid { get; init; }
+    public required IPEndPoint ClientAddress { get; init; }
+    public required short MaxTransferUnit { get; init; }
+    public required bool EncryptionEnabled { get; init; }
 
+    [SetsRequiredMembers]
     public OpenConnectionReply2(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
@@ -25,8 +27,6 @@ public class OpenConnectionReply2() {
     }
 
     public byte[] Write() {
-        if (ClientAddress == null) throw new MissingFieldException("OpenConnectionReply2: ClientAddress field not provided!");
-
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
 

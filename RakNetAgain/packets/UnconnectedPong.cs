@@ -1,12 +1,15 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class UnconnectedPong() {
     public static readonly PacketID Id = PacketID.UnconnectedPong;
 
-    public long Time { get; init; }
-    public ulong ServerGuid { get; init; }
-    public string Message { get; init; } = "";
+    public required long Time { get; init; }
+    public required ulong ServerGuid { get; init; }
+    public required string Message { get; init; }
 
+    [SetsRequiredMembers]
     public UnconnectedPong(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
@@ -21,8 +24,6 @@ public class UnconnectedPong() {
     }
 
     public byte[] Write() {
-        if (Message == null) throw new MissingFieldException("UnconnectedPong: Message field not provided!");
-
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
 

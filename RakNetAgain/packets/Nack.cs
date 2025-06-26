@@ -1,10 +1,13 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class Nack() {
     public static readonly PacketID Id = PacketID.Nack;
 
-    public uint[] Sequences { get; init; } = [];
+    public required uint[] Sequences { get; init; } = [];
 
+    [SetsRequiredMembers]
     public Nack(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);

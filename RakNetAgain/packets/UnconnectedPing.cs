@@ -1,11 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class UnconnectedPing() {
     public static readonly PacketID Id = PacketID.UnconnectedPing;
 
-    public long Time { get; init; }
-    public long ClientGuid { get; init; }
+    public required long Time { get; init; }
+    public required ulong ClientGuid { get; init; }
 
+    [SetsRequiredMembers]
     public UnconnectedPing(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
@@ -15,7 +18,7 @@ public class UnconnectedPing() {
 
         Time = reader.ReadInt64BE();
         reader.ReadMagic();
-        ClientGuid = reader.ReadInt64BE();
+        ClientGuid = reader.ReadUInt64BE();
     }
 
     public byte[] Write() {

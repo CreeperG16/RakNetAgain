@@ -6,6 +6,13 @@ using System.Net.Sockets;
 
 namespace RakNetAgain;
 
+// note to self
+// server and client both send connected pings *and* pongs
+// slow interval (few seconds)
+// when server sends a connected ping and doesnt get an ACK back from the client, it
+// starts sending pings every half a second or so (idk exactly, fast)
+// and I assume that's how it determines that the connection was lost
+
 public class RakServer(ushort port) {
     public static readonly byte RAKNET_VERSION = 11;
 
@@ -13,28 +20,27 @@ public class RakServer(ushort port) {
     public readonly ulong Guid = (ulong)new Random().NextInt64();
 
     public ushort MaxTransferUnit { get; init; } = 1492;
-
     public int MaxConnections { get; set; } = 10;
-    public int ProtocolVersion { get; set; } = 818;
-    public string GameVersion { get; set; } = "1.21.90";
 
     // Store by GUID instead?
-    public Dictionary<IPEndPoint, RakConnection> Connections = [];
+    public Dictionary<IPEndPoint, RakServerConnection> Connections = [];
 
     public delegate string OnDiscoveryListener(IPEndPoint endpoint);
     public event OnDiscoveryListener OnDiscovery = (_) => "";
 
-    public delegate void OnConnectListener(RakConnection connection);
+    public delegate void OnConnectListener(RakServerConnection connection);
     public event OnConnectListener OnConnect = delegate { };
 
     // TODO: proper start func, threads?
     private CancellationTokenSource? _cts;
-    public void Start(CancellationToken? cancellationToken = null) {
+    public async Task Start(CancellationToken? cancellationToken = null) {
         _cts = new CancellationTokenSource();
         var token = cancellationToken ?? _cts.Token;
 
-        _ = StartListener(token);
-        _ = StartConnectionTicking(token);
+        await Task.WhenAll(
+            StartListener(token),
+            StartConnectionTicking(token)
+        );
     }
 
     public void Stop() {
@@ -49,7 +55,7 @@ public class RakServer(ushort port) {
 
         while (!token.IsCancellationRequested) {
             await GetPackets();
-            Thread.Sleep(30);
+            await Task.Delay(30, token);
         }
     }
 
@@ -60,11 +66,11 @@ public class RakServer(ushort port) {
 
         while (!token.IsCancellationRequested) {
             await TickConnections();
-            Thread.Sleep(100);
+            await Task.Delay(100, token);
         }
     }
 
-    public void StopListener() =>  _listenerCts?.Cancel();
+    public void StopListener() => _listenerCts?.Cancel();
     public void StopConnectionTicking() => _connectionTickerCts?.Cancel();
 
     public async Task GetPackets() {
@@ -93,7 +99,7 @@ public class RakServer(ushort port) {
                 return;
             }
 
-            await connection.HandleIncomingPacket(data);
+            await connection.HandleOnlinePacket(data);
             return;
         }
 
@@ -123,17 +129,6 @@ public class RakServer(ushort port) {
             Time = packet.Time,
             ServerGuid = Guid,
             Message = message,
-            // TODO: maybe move this implementation of ServerMessage
-            // out of RakNet itself into the Minecraft server implementation?
-            // Message = new() {
-            //     GameVersion = GameVersion,
-            //     ProtocolVersion = ProtocolVersion,
-            //     Port = ServerPort,
-            //     PortV6 = ServerPortV6,
-            //     ServerGuid = Guid,
-            //     PlayerCount = Connections.Count,
-            //     MaxPlayers = MaxConnections,
-            // },
         };
 
         await SendPacket(pong.Write(), endpoint);
@@ -180,9 +175,11 @@ public class RakServer(ushort port) {
             EncryptionEnabled = false,
         };
 
-        RakConnection connection = new(server: this) {
+        RakServerConnection connection = new(
+            server: this,
+            mtu: (ushort)packet.MaxTransferUnit
+        ) {
             Endpoint = endpoint,
-            MaxTransferUnit = (ushort)packet.MaxTransferUnit,
         };
 
         connection.OnDisconnect += () => {

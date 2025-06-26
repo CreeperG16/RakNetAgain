@@ -29,8 +29,8 @@ public class RakNetOnix : OnixPluginBase {
 
     protected override void OnEnabled() {
         server = new RakServer(25565) {
-            GameVersion = "1.21.82",
-            ProtocolVersion = 800,
+            // GameVersion = "1.21.82",
+            // ProtocolVersion = 800,
             MaxConnections = 20,
         };
 

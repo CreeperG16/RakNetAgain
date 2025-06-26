@@ -1,11 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class ConnectedPong() {
     public static readonly PacketID Id = PacketID.ConnectedPong;
 
-    public long PingTime { get; init; }
-    public long PongTime { get; init; }
+    public required long PingTime { get; init; }
+    public required long PongTime { get; init; }
 
+    [SetsRequiredMembers]
     public ConnectedPong(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);

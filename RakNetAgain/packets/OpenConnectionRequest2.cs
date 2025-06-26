@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 
 namespace RakNetAgain.Packets;
@@ -7,10 +8,12 @@ public class OpenConnectionRequest2() {
 
     public int Cookie { get; init; }
     public bool HasSecurityChallenge { get; init; }
-    public IPEndPoint? ServerAddress { get; init; }
-    public short MaxTransferUnit { get; init; }
-    public ulong ClientGuid { get; init; }
+    public required IPEndPoint? ServerAddress { get; init; }
+    public required short MaxTransferUnit { get; init; }
+    public required ulong ClientGuid { get; init; }
 
+    // `hasCookie` is whether the openconnectionreply1 packet contained a cookie
+    [SetsRequiredMembers]
     public OpenConnectionRequest2(byte[] data, bool hasCookie) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);

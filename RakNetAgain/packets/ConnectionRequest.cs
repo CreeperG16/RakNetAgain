@@ -1,11 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class ConnectionRequest() {
     public static readonly PacketID Id = PacketID.ConnectionRequest;
 
-    public ulong ClientGuid { get; init; }
-    public long Time { get; init; }
+    public required ulong ClientGuid { get; init; }
+    public required long Time { get; init; }
 
+    [SetsRequiredMembers]
     public ConnectionRequest(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);

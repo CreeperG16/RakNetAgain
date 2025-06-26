@@ -1,11 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class IncompatibleProtocol() {
     public static readonly PacketID Id = PacketID.IncompatibleProtocolVersion;
 
-    public byte ProtocolVersion { get; init; }
-    public ulong ServerGuid { get; init; }
+    public required byte ProtocolVersion { get; init; }
+    public required ulong ServerGuid { get; init; }
 
+    [SetsRequiredMembers]
     public IncompatibleProtocol(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);

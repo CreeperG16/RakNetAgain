@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 
 namespace RakNetAgain.Packets;
@@ -5,11 +6,12 @@ namespace RakNetAgain.Packets;
 public class ConnectionRequestAccepted() {
     public static readonly PacketID Id = PacketID.ConnectionRequestAccepted;
 
-    public IPEndPoint? ClientAddress { get; init; }
-    public short SystemIndex { get; init; }
-    public long RequestTime { get; init; }
-    public long Time { get; init; }
+    public required IPEndPoint ClientAddress { get; init; }
+    public required short SystemIndex { get; init; }
+    public required long RequestTime { get; init; }
+    public required long Time { get; init; }
 
+    [SetsRequiredMembers]
     public ConnectionRequestAccepted(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
@@ -30,8 +32,6 @@ public class ConnectionRequestAccepted() {
     }
 
     public byte[] Write() {
-        if (ClientAddress == null) throw new MissingFieldException("ConnectionRequestAccepted: ClientAddress field not provided!");
-
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
 

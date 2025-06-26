@@ -3,10 +3,12 @@ using System.Net;
 
 namespace RakNetAgain;
 
-public class RakConnection {
+// An abstract class that represents a RakNet connection, to implement
+// the same logic client and server side.
+public abstract class RakConnection {
     public required IPEndPoint Endpoint { get; init; }
-    public required ushort MaxTransferUnit { get; init; }
-    public ConnectionStatus Status { get; private set; } = ConnectionStatus.Connecting;
+    public ushort MaxTransferUnit { get; protected set; } = 1492;
+    public ConnectionStatus Status { get; protected set; } = ConnectionStatus.Connecting;
 
     public enum ConnectionStatus { Connecting, Connected, Disconnecting, Disconnected }
 
@@ -34,19 +36,22 @@ public class RakConnection {
 
     public delegate void OnConnectListener();
     public event OnConnectListener OnConnect = delegate { };
+    protected virtual void EmitOnConnect() => OnConnect?.Invoke();
 
     public delegate void OnDisconnectListener();
     public event OnDisconnectListener OnDisconnect = delegate { };
+    protected virtual void EmitOnDisconnect() => OnDisconnect?.Invoke();
+
+    public delegate void OnTickListener();
+    public event OnTickListener OnTick = delegate { };
+    protected virtual void EmitOnTick() => OnTick?.Invoke();
 
     public delegate void OnGamePacketListener(byte[] data);
     public event OnGamePacketListener OnGamePacket = delegate { };
+    protected virtual void EmitOnGamePacket(byte[] data) => OnGamePacket?.Invoke(data);
 
-    private readonly RakServer _server;
-    internal RakConnection(RakServer server) {
-        _server = server;
-    }
+    internal abstract Task Send(byte[] data);
 
-    internal Task Send(byte[] data) => _server.SendPacket(data, Endpoint);
     private async Task SendFrameSet(FrameSet frameSet) {
         outputBackup[frameSet.Sequence] = frameSet.Frames;
         await Send(frameSet.Write());
@@ -67,6 +72,8 @@ public class RakConnection {
             lostFrameSequences.Clear();
         }
 
+        OnTick?.Invoke();
+
         // TODO: differentiate these somehow?
         // Not sure yet how to properly implement immediate
         await FlushFrameQueue(Frame.FramePriority.Immediate);
@@ -75,7 +82,7 @@ public class RakConnection {
 
     // --- Receiving packets ---
 
-    internal async Task HandleIncomingPacket(byte[] data) {
+    internal async Task HandleOnlinePacket(byte[] data) {
         var id = data[0] & 0xf0;
         // Console.WriteLine($"Received connected packet '0x{id:X2}' [{(PacketID)id}] ({data.Length}) from client.");
 
@@ -254,79 +261,16 @@ public class RakConnection {
         await FlushFrameQueue(Frame.FramePriority.Immediate);
     }
 
-    private void HandleUnconnectedPacket(byte[] data) {
-        switch ((PacketID)data[0]) {
-            case PacketID.Disconnect:
-                Status = ConnectionStatus.Disconnecting;
-                OnDisconnect?.Invoke();
-                Status = ConnectionStatus.Disconnected;
-                break;
-            case PacketID.ConnectionRequest:
-                HandleConnectionRequest(data);
-                break;
-            case PacketID.NewIncomingConnection:
-                Status = ConnectionStatus.Connected;
-                // Console.WriteLine($"Client connected: {Endpoint}");
-                OnConnect?.Invoke();
-                break;
-        }
-    }
+    // Implement these differently Client / Server side
 
-    private void HandleConnectedPacket(byte[] data) {
-        switch ((PacketID)data[0]) {
-            case PacketID.Disconnect:
-                Status = ConnectionStatus.Disconnecting;
-                OnDisconnect?.Invoke();
-                Status = ConnectionStatus.Disconnected;
-                break;
-            case PacketID.ConnectedPing:
-                HandleConnectedPing(data);
-                break;
-            case PacketID.GamePacket:
-                // Console.WriteLine($"GOT GAME PACKET WOOOO");
-                OnGamePacket?.Invoke(data[1..]); // Trim off the 0xfe game packet id
-                break;
-        }
-    }
-
-    private void HandleConnectionRequest(byte[] data) {
-        ConnectionRequest packet = new(data);
-
-        ConnectionRequestAccepted reply = new() {
-            ClientAddress = Endpoint,
-            SystemIndex = (short)_server.Connections.Count, // TODO: Properly?
-            RequestTime = packet.Time,
-            Time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-        };
-
-        Frame frame = new() {
-            Reliability = Frame.FrameReliability.Unreliable,
-            OrderChannel = 0,
-            Payload = reply.Write(),
-        };
-
-        QueueFrame(frame, Frame.FramePriority.Normal);
-    }
-
-    private void HandleConnectedPing(byte[] data) {
-        ConnectedPing ping = new(data);
-        ConnectedPong pong = new() {
-            PingTime = ping.Time,
-            PongTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-        };
-
-        Frame frame = new() {
-            Reliability = Frame.FrameReliability.Unreliable,
-            OrderChannel = 0,
-            Payload = pong.Write(),
-        };
-
-        QueueFrame(frame, Frame.FramePriority.Normal);
-    }
+    // Packets received before NewIncomingConnection
+    protected abstract void HandleUnconnectedPacket(byte[] data);
+    // Packets received after NewIncomingConnection
+    protected abstract void HandleConnectedPacket(byte[] data);
 
     // --- Sending packets ---
 
-    private void QueueFrame(Frame frame, Frame.FramePriority priority) {
+    protected void QueueFrame(Frame frame, Frame.FramePriority priority) {
         if (!orderIndices.TryGetValue(frame.OrderChannel, out var currentOrder)) currentOrder = 0;
         if (!sequenceIndices.TryGetValue(frame.OrderChannel, out var currentSequence)) currentSequence = 0;
 
@@ -404,7 +348,7 @@ public class RakConnection {
         }
     }
 
-    public void Disconnect() {
+    public virtual void Disconnect() {
         Disconnect packet = new();
         Frame frame = new() {
             Reliability = Frame.FrameReliability.Unreliable,
@@ -413,15 +357,5 @@ public class RakConnection {
         };
 
         QueueFrame(frame, Frame.FramePriority.Immediate);
-    }
-
-    public void SendGamePacket(byte[] data, Frame.FramePriority priority) {
-        Frame frame = new() {
-            Reliability = Frame.FrameReliability.Reliable,
-            OrderChannel = 0,
-            Payload = [0xfe, .. data],
-        };
-
-        QueueFrame(frame, priority);
     }
 }

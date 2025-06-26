@@ -1,13 +1,16 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RakNetAgain.Packets;
 
 public class OpenConnectionReply1() {
     public static readonly PacketID Id = PacketID.OpenConnectionReply1;
 
-    public ulong ServerGuid { get; init; }
-    public bool UseSecurity { get; init; }
+    public required ulong ServerGuid { get; init; }
+    public required bool UseSecurity { get; init; }
     public int Cookie { get; init; }
-    public ushort MaxTransferUnit { get; init; }
+    public required ushort MaxTransferUnit { get; init; }
 
+    [SetsRequiredMembers]
     public OpenConnectionReply1(byte[] data) : this() {
         using MemoryStream stream = new(data);
         using BinaryReader reader = new(stream);
