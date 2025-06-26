@@ -5,7 +5,7 @@ public class UnconnectedPong() {
 
     public long Time { get; init; }
     public ulong ServerGuid { get; init; }
-    public ServerMessage? Message { get; init; }
+    public string Message { get; init; } = "";
 
     public UnconnectedPong(byte[] data) : this() {
         using MemoryStream stream = new(data);
@@ -17,7 +17,7 @@ public class UnconnectedPong() {
         Time = reader.ReadInt64BE();
         ServerGuid = reader.ReadUInt64BE();
         reader.ReadMagic();
-        Message = ServerMessage.FromString(reader.ReadString16());
+        Message = reader.ReadString16();
     }
 
     public byte[] Write() {
@@ -30,7 +30,7 @@ public class UnconnectedPong() {
         writer.WriteBE(Time);
         writer.WriteBE(ServerGuid);
         writer.WriteMagic();
-        writer.WriteString16(Message.ToString());
+        writer.WriteString16(Message);
 
         return stream.ToArray();
     }

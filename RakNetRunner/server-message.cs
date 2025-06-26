@@ -1,4 +1,4 @@
-namespace RakNetAgain;
+namespace RakNetRunner;
 
 public class ServerMessage {
     public enum GameEdition {

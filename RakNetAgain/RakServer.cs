@@ -6,11 +6,9 @@ using System.Net.Sockets;
 
 namespace RakNetAgain;
 
-public class RakServer(ushort port, ushort? portV6 = null) {
+public class RakServer(ushort port) {
     public static readonly byte RAKNET_VERSION = 11;
 
-    private readonly ushort ServerPort = port;
-    private readonly ushort ServerPortV6 = portV6.GetValueOrDefault((ushort)(port + 1));
     private readonly UdpClient socket = new(port, AddressFamily.InterNetwork); // ipv4 socket (implement v6?)
     public readonly ulong Guid = (ulong)new Random().NextInt64();
 
@@ -22,6 +20,9 @@ public class RakServer(ushort port, ushort? portV6 = null) {
 
     // Store by GUID instead?
     public Dictionary<IPEndPoint, RakConnection> Connections = [];
+
+    public delegate string OnDiscoveryListener(IPEndPoint endpoint);
+    public event OnDiscoveryListener OnDiscovery = (_) => "";
 
     public delegate void OnConnectListener(RakConnection connection);
     public event OnConnectListener OnConnect = delegate { };
@@ -116,21 +117,23 @@ public class RakServer(ushort port, ushort? portV6 = null) {
 
     private async Task HandleUnconnectedPing(byte[] data, IPEndPoint endpoint) {
         UnconnectedPing packet = new(data);
+        string message = OnDiscovery?.Invoke(endpoint) ?? "";
 
         UnconnectedPong pong = new() {
             Time = packet.Time,
             ServerGuid = Guid,
+            Message = message,
             // TODO: maybe move this implementation of ServerMessage
             // out of RakNet itself into the Minecraft server implementation?
-            Message = new() {
-                GameVersion = GameVersion,
-                ProtocolVersion = ProtocolVersion,
-                Port = ServerPort,
-                PortV6 = ServerPortV6,
-                ServerGuid = Guid,
-                PlayerCount = Connections.Count,
-                MaxPlayers = MaxConnections,
-            },
+            // Message = new() {
+            //     GameVersion = GameVersion,
+            //     ProtocolVersion = ProtocolVersion,
+            //     Port = ServerPort,
+            //     PortV6 = ServerPortV6,
+            //     ServerGuid = Guid,
+            //     PlayerCount = Connections.Count,
+            //     MaxPlayers = MaxConnections,
+            // },
         };
 
         await SendPacket(pong.Write(), endpoint);
