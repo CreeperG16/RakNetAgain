@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace RakNetAgain;
+namespace RakNetAgain.Types;
 
 public static class Address {
     public static void WriteAddress(this BinaryWriter writer, IPEndPoint endpoint) {

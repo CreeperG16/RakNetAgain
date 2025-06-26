@@ -1,4 +1,5 @@
 using RakNetAgain.Packets;
+using RakNetAgain.Types;
 using System.Net;
 
 namespace RakNetAgain;

@@ -1,4 +1,4 @@
-namespace RakNetAgain;
+namespace RakNetAgain.Types;
 
 public static class Magic {
     public static readonly int Size = 16;

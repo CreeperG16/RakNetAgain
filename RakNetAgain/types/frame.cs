@@ -1,4 +1,4 @@
-namespace RakNetAgain;
+namespace RakNetAgain.Types;
 
 public class Frame() {
     public enum FrameReliability {

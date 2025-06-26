@@ -1,4 +1,4 @@
-namespace RakNetAgain;
+namespace RakNetAgain.Types;
 
 public static class SequenceRecords {
     private struct SequenceRecord(bool si, uint s, uint e) {

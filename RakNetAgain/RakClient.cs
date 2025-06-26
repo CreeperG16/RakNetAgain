@@ -1,4 +1,5 @@
 using RakNetAgain.Packets;
+using RakNetAgain.Types;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
